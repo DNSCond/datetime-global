@@ -2,14 +2,10 @@
 import { Devvit, useState, useInterval, useForm } from '@devvit/public-api';
 import * as chrono from 'chrono-node';
 import { Datetime_local } from './Datetime_local.ts';
+import { Datetime_global } from 'datetime_global/Datetime_global.ts';
 
-Devvit.configure({
-  redditAPI: true,
-});
+Devvit.configure({ redditAPI: true, });
 
-const now = function (): Datetime_local {
-  return new Datetime_local(Datetime_local.zeroms());
-};
 
 // Add a menu item to the subreddit menu for instantiating the new experience post
 Devvit.addMenuItem({
@@ -82,7 +78,6 @@ Devvit.addCustomPostType({
         <button onPress={async function () {
           context.ui.showForm(form);
         }}>set datetime</button>
-
         <button disabled={true} onPress={async function () {
           set_walking(true);
         }}>run clock</button>
@@ -90,5 +85,66 @@ Devvit.addCustomPostType({
     );
   },
 });
+
+function cloneWithGlobalFlag(regex: RegExp): RegExp {
+  const flags = regex.flags.includes('g') ? regex.flags : regex.flags + 'g';
+  return new RegExp(regex.source, flags);
+}
+
+function findall(regex: RegExp, input: string, nullIfNoMatch: boolean): string[][] | null {
+  let matched = [];
+  if (!regex.flags.includes('g')) {
+    // @ts-ignore
+    matched = String(input).match(regex);
+    if (matched === null) return nullIfNoMatch ? null : new Array;
+    matched = [matched];
+  } else {
+    matched = [...String(input).matchAll(cloneWithGlobalFlag(regex))];
+  }
+  if (matched.length > 0) {
+    return matched;
+  } else {
+    return nullIfNoMatch ? null : new Array;
+  }
+}
+function normalize_newlines(string: string) {
+  return String(string).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+}
+function indent_codeblock(string: string) {
+  return '    ' + normalize_newlines(string).replace(/\n/g, '\n    ');
+}
+
+Devvit.addTrigger({
+  event: 'CommentCreate',
+  onEvent: async (event, context) => {
+    if (!event.author || !event.comment) return;
+    if (event.author.id === context.appAccountId && (event.author.id) !== undefined) {
+      return;
+    }
+    const commentBody = String(event.comment.body);
+    const finditer = findall(/u(?:ser)?\/datetime-global\/?\s+(['"])([a-zA-Z0-9 (\-)+:]+)\1(?:,?\s*(['"])([A-Za-z_\/, ]+)\3)?/i, commentBody, true);
+    if (finditer) {
+      const date = chrono.parseDate(String(finditer[0][2]));
+      if (date !== null) {
+        const datetime = new Datetime_global(date, 'UTC'), datetimezones = String(finditer[0][4] ?? 'UTC').split(/, */), datetimezonesArray = [];
+        for (const dtZone of datetimezones) {
+          try {
+            datetimezonesArray.push(new Datetime_global(datetime, dtZone));
+          } catch {
+            // ignore failures
+          }
+        }
+        const zoned = datetimezonesArray.length > 0 ? `- \`${datetimezonesArray.map(String).join('`\n- `')}\`\n\n` : '';
+        await context.reddit.submitComment({
+          id: event.comment.id, //text: `hi u/${event.author.name}\n\nDatetime\\_global: \`${datetime}\`\n\nDatetime\\_local: \`${datetime_local}\``,
+          text: `Hi there u/${event.author.name}\n\ni computed your Datetime and got \`${datetime}\``
+            + `\n\n${zoned}I am a Bot, you can summon me by mentioning me and putting your datetime in` +
+            ` quotes (\`"\`) and a iana timezoneId in quotes after that`,
+        });
+      }
+    }
+  },
+});
+
 
 export default Devvit;
