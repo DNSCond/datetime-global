@@ -2,6 +2,12 @@
   "extends": "@devvit/public-api/devvit.tsconfig.json",
   "compilerOptions": {
     "allowImportingTsExtensions": true,
-    "noEmit": true
-  }
+    "noEmit": true,
+    "lib": [
+      "ESNext"
+    ],
+    "target": "ESNext",
+    "moduleResolution": "nodenext",
+    "module": "NodeNext"
+  },
 }
