@@ -1,6 +1,7 @@
 // Learn more at developers.reddit.com/docs
 import { CommentV2 } from '@devvit/protos/types/devvit/reddit/v2alpha/commentv2.js';
 import { Devvit, TriggerContext, CommentCreateDefinition } from '@devvit/public-api';
+import { jsonEncodeIndent } from 'anthelpers';
 import * as chrono from 'chrono-node';
 import { Datetime_global } from 'datetime_global/Datetime_global.ts';
 import { Temporal } from 'temporal-polyfill';
@@ -44,6 +45,11 @@ Devvit.addSettings([
       }
     },
   },
+  {
+    type: 'boolean',
+    name: 'commentOnPosts',
+    label: 'comment time informatyion on posts that have them?', defaultValue: false,
+  },
 ]);
 
 function cloneWithGlobalFlag(regex: RegExp): RegExp {
@@ -66,12 +72,6 @@ function findall(regex: RegExp, input: string, nullIfNoMatch: boolean): string[]
   } else {
     return nullIfNoMatch ? null : new Array;
   }
-}
-function normalize_newlines(string: string) {
-  return String(string).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-}
-function indent_codeblock(string: string) {
-  return '    ' + normalize_newlines(string).replace(/\n/g, '\n    ');
 }
 
 function parseInstant(toParse: string): Datetime_global | null {
@@ -96,7 +96,8 @@ function parseInstant(toParse: string): Datetime_global | null {
   return null;
 }
 
-function extractDates(text: string, defaultTimezone: string): { start: Date, end: Date | null }[] {
+type extractionResult = { start: Date, end: Date | null };
+function extractDates(text: string, defaultTimezone: string): extractionResult[] {
   const results = chrono.parse(text, { timezone: defaultTimezone }), dateArray = [];
 
   for (const result of results) {
@@ -112,20 +113,24 @@ function extractDates(text: string, defaultTimezone: string): { start: Date, end
   return dateArray;
 }
 
+function format_extractedDates(name: string, extractedDates: extractionResult[], displayTimezones: string[]) {
+  let text = `Hello u/${name}\n`;
+  for (let time of extractedDates) {
+    text += `\n- \`${Datetime_global(time.start, 'UTC')}\`${time.end === null ? '' : ` to \`${Datetime_global(time.end, 'UTC')}\``} (\`UTC\`)`;
+    for (let tz of displayTimezones) {
+      if (/UTC/i.test(tz)) continue;
+      text += `\n  - \`${Datetime_global(time.start, tz)}\`${time.end === null ? '' : ` to \`${Datetime_global(time.end, tz)}\``} (\`${tz}\`)`;
+    }
+  } return text;
+}
+
 async function verifChecker(body: string, comment: CommentV2, context: TriggerContext, event: any): Promise<boolean> {
   const id = comment.id, tz: string = await context.settings.get('parseTimezone') ?? 'UTC',
     displayTz: string = await context.settings.get('displayTimezone') ?? 'UTC',
     displayTimezones = splitZones(displayTz), extractedDates = extractDates(body, tz);
 
   if (extractedDates.length > 0) {
-    let text = `Hello u/${event.author.name}\n`;
-    for (let time of extractedDates) {
-      text += `\n- \`${Datetime_global(time.start, 'UTC')}\`${time.end === null ? '' : ` to \`${Datetime_global(time.end, 'UTC')}\``} (\`UTC\`)`;
-      for (let tz of displayTimezones) {
-        if (/UTC/i.test(tz)) continue;
-        text += `\n  - \`${Datetime_global(time.start, tz)}\`${time.end === null ? '' : ` to \`${Datetime_global(time.end, tz)}\``} (\`${tz}\`)`;
-      }
-    }
+    const text = format_extractedDates(event.author.name, extractedDates, displayTimezones);
     await context.reddit.submitComment({ id, text });
     return true;
   }
@@ -156,116 +161,24 @@ Devvit.addTrigger({
   },
 });
 
-// // Add a menu item to the subreddit menu for instantiating the new experience post
-// Devvit.addMenuItem({
-//   label: 'post inital clock',
-//   location: 'subreddit',
-//   forUserType: 'moderator',
-//   onPress: async (_event, context) => {
-//     const { reddit, ui } = context;
-//     ui.showToast("Submitting your post - upon completion you'll navigate there.");
-
-//     const subreddit = await reddit.getCurrentSubreddit();
-//     const post = await reddit.submitPost({
-//       title: Date(), subredditName: subreddit.name,
-//       // The preview appears while the post loads
-//       preview: (
-//         <vstack height="100%" width="100%" alignment="middle center">
-//           <text size="large">Loading ...</text>
-//         </vstack>
-//       ),
-//     });
-//     ui.navigateTo(post);
-//   },
-// });
-//
-// // Add a post type definition
-// Devvit.addCustomPostType({
-//   name: 'Experience Post',
-//   height: 'tall',
-//   render: (context) => {
-//     // @ts-ignore
-//     const [svgString, set_svgString] = useState('data:image/svg+xml,' + (new Datetime_local()).drawClock());
-//     const [datetime, set_datetime] = useState('Datetime-loading'), [walking, set_walking] = useState(true);
-//     const /*updateInterval = useInterval(() => {
-//       if (walking) {
-//         // @ts-ignore
-//         const date = now();
-//         set_svgString('data:image/svg+xml,' + date.drawClock());
-//         set_datetime(date.toString());
-//       }
-//     }, 1000),*/ form = useForm({
-//       fields: [
-//         {
-//           type: 'string',
-//           name: 'datetime-local',
-//           label: 'enter a Date',
-//         },
-//       ],
-//       acceptLabel: 'Travel',
-//       cancelLabel: 'Cancel',
-//     }, function (values: any) {
-//       set_walking(false); let parsedBy = 'is not a datetime';
-//       const datetime_text: string = `${values['datetime-local']}`;
-//       const time = chrono.parseDate(datetime_text);
-//       const date = new Datetime_local(time === null ? NaN : time.getTime());
-//       if (date.isValid()) {
-//         parsedBy = 'is matched successfully!';
-//       }
-//       context.ui.showToast(`"${date}" ${parsedBy}`);
-//       set_svgString('data:image/svg+xml,' + date.drawClock());
-//       set_datetime(date.toString());
-//     });
-//
-//     //updateInterval.start();
-//     return (
-//       <vstack height="100%" width="100%" gap="medium" alignment="center middle">
-//         <image url={svgString} description="Clock"
-//           imageHeight={500} imageWidth={500}
-//           height="250px" width="250px" />
-//         <text size="large">{`${datetime}`}</text>
-//         <button onPress={async function () {
-//           context.ui.showForm(form);
-//         }}>set datetime</button>
-//         <button disabled={true} onPress={async function () {
-//           set_walking(true);
-//         }}>run clock</button>
-//       </vstack>
-//     );
-//   },
-// });
-
-// Devvit.addTrigger({
-//   event: 'CommentCreate',
-//   onEvent: async (event, context) => {
-//     if (!event.author || !event.comment) return;
-//     if (event.author.id === context.appAccountId && (event.author.id) !== undefined) {
-//       return;
-//     }
-//     const commentBody = String(event.comment.body);
-//     const finditer = findall(/u\/datetime-global\/?\s+(['"])([a-zA-Z0-9 (\-)+:]+)\1(?:,?\s*(['"])([A-Za-z_\/, ]+)\3)?/i, commentBody, true);
-//     if (finditer) {
-//       const date = chrono.parseDate(String(finditer[0][2]));
-//       if (date !== null) {
-//         const datetime = new Datetime_global(date, 'UTC'), datetimezones = String(finditer[0][4] ?? 'UTC').split(/, */), datetimezonesArray = [];
-//         for (const dtZone of datetimezones) {
-//           try {
-//             datetimezonesArray.push(new Datetime_global(datetime, dtZone));
-//           } catch {
-//             // ignore failures
-//           }
-//         }
-//         const zoned = datetimezonesArray.length > 0 ? `- \`${datetimezonesArray.map(String).join('`\n- `')}\`\n\n` : '';
-//         await context.reddit.submitComment({
-//           id: event.comment.id, //text: `hi u/${event.author.name}\n\nDatetime\\_global: \`${datetime}\`\n\nDatetime\\_local: \`${datetime_local}\``,
-//           text: `Hi there u/${event.author.name}\n\ni computed your Datetime and got \`${datetime}\``
-//             + `\n\n${zoned}I am a Bot, you can summon me by mentioning me and putting your datetime in` +
-//             ` quotes (\`"\`) and a iana timezoneId in quotes after that`,
-//         });
-//       }
-//     }
-//   },
-// });
-
+Devvit.addTrigger({
+  event: 'PostCreate',
+  async onEvent(event, context) {
+    const { post } = event; if (!post) return;
+    if (!event?.author) return; const { id } = post;
+    if (event?.author?.name === 'datetime-global') return; 
+    if (await context.settings.get('commentOnPosts')) {
+      // i should not have to do this. fix your Post class reddit
+      const { title, body } = (await context.reddit.getPostById(post.id)) ?? {};
+      const tz: string = await context.settings.get('parseTimezone') ?? 'UTC';
+      const extractedDates = extractDates((title ?? '') + (body ?? ''), tz);
+      if (extractedDates.length > 0) {
+        const displayTz: string = await context.settings.get('displayTimezone') ?? 'UTC', displayTimezones = splitZones(displayTz)
+        const text = format_extractedDates(event.author.name, extractedDates, displayTimezones);
+        await context.reddit.submitComment({ id, text });
+      }
+    }
+  },
+});
 
 export default Devvit;

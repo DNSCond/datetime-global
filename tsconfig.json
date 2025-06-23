@@ -4,7 +4,8 @@
     "allowImportingTsExtensions": true,
     "noEmit": true,
     "lib": [
-      "ESNext"
+      "ESNext",
+      "dom"
     ],
     "target": "ESNext",
     "moduleResolution": "nodenext",
