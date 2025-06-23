@@ -14,25 +14,29 @@ a moderator can specify which timezones the subreddit uses.
 
 ## changelog
 
+### 0.1.4
+
+- update readme and devvit
+
 ### 0.1.3
 
-update readme
+- update readme
 
 ### 0.1.2
 
-added the abillity to have every post the time related information
+- added the abillity to have every post the time related information
 
-### comming soosn
+### comming soon
 
 - that but flair only
 
 ### 0.1.1
 
-i forgot
+- i forgot
 
 ### 0.1.0
 
-a whole new system
+- a whole new system
 
 ### 0.0.4 and 0.0.5
 
