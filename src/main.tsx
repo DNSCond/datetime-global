@@ -166,14 +166,14 @@ Devvit.addTrigger({
   async onEvent(event, context) {
     const { post } = event; if (!post) return;
     if (!event?.author) return; const { id } = post;
-    if (event?.author?.name === 'datetime-global') return; 
+    if (event?.author?.name === 'datetime-global') return;
     if (await context.settings.get('commentOnPosts')) {
       // i should not have to do this. fix your Post class reddit
       const { title, body } = (await context.reddit.getPostById(post.id)) ?? {};
       const tz: string = await context.settings.get('parseTimezone') ?? 'UTC';
-      const extractedDates = extractDates((title ?? '') + (body ?? ''), tz);
+      const extractedDates = extractDates((title ?? '') + '\n\n' + (body ?? ''), tz);
       if (extractedDates.length > 0) {
-        const displayTz: string = await context.settings.get('displayTimezone') ?? 'UTC', displayTimezones = splitZones(displayTz)
+        const displayTz: string = await context.settings.get('displayTimezone') ?? 'UTC', displayTimezones = splitZones(displayTz);
         const text = format_extractedDates(event.author.name, extractedDates, displayTimezones);
         await context.reddit.submitComment({ id, text });
       }
